@@ -1,11 +1,11 @@
 package cn.thislx.security.config;
 
+import cn.thislx.security.filter.VerifyFilter;
 import cn.thislx.security.handle.CustomAuthenticationFailureHandler;
 import cn.thislx.security.handle.CustomAuthenticationSuccessHandler;
 import cn.thislx.security.handle.CustomLogoutSuccessHandler;
 import cn.thislx.security.permission.CustomPermissionEvaluator;
 import cn.thislx.security.provider.CustomAuthenticationProvider;
-import cn.thislx.security.strategy.CustomExpiredSessionStrategy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,6 +19,7 @@ import org.springframework.security.config.annotation.web.configuration.WebSecur
 import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.core.session.SessionRegistryImpl;
 import org.springframework.security.web.access.expression.DefaultWebSecurityExpressionHandler;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.authentication.WebAuthenticationDetails;
 import org.springframework.security.web.authentication.rememberme.JdbcTokenRepositoryImpl;
 import org.springframework.security.web.authentication.rememberme.PersistentTokenRepository;
@@ -84,50 +85,53 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 
     @Override
     protected void configure(HttpSecurity http) throws Exception {
-        http.authorizeRequests()
-                // 如果有允许匿名的url，填在下面
-                .antMatchers("/getVerifyCode", "/login/invalid").permitAll()
-                .anyRequest().authenticated()
-                .and()
-                // 设置登陆页
-                .formLogin().loginPage("/login")
-                .successHandler(customAuthenticationSuccessHandler)
-                .failureHandler(customAuthenticationFailureHandler)
-                // 设置登陆成功页
-//                .defaultSuccessUrl("/").permitAll()
-                // 登录失败Url
-//                .failureUrl("/login/error")
-                // 自定义登陆用户名和密码参数，默认为username和password
-//                .usernameParameter("username")
-//                .passwordParameter("password")
-                // 指定authenticationDetailsSource
-                .authenticationDetailsSource(authenticationDetailsSource)
-//                .and()
-//                .addFilterBefore(new VerifyFilter(), UsernamePasswordAuthenticationFilter.class)
-//                .logout()
-                .permitAll()
-                // 自动登录
-                .and()
-                .logout().clearAuthentication(false).logoutUrl("/logout").deleteCookies("JSESSIONID").logoutSuccessHandler(customLogoutSuccessHandler)
-                .and()
-                .sessionManagement()
-                .invalidSessionUrl("/login/invalid")
-                .maximumSessions(1)
-                // 当达到最大值时，是否保留已经登录的用户
-                .maxSessionsPreventsLogin(false)
-                // 当达到最大值时，旧用户被踢出后的操作
-                .expiredSessionStrategy(new CustomExpiredSessionStrategy())
-                .sessionRegistry(sessionRegistry());
-//                .rememberMe()
-//                .tokenRepository(persistentTokenRepository())
-//                // 有效时间：单位s
-//                .tokenValiditySeconds(60);
 
         // 关闭CSRF跨域
         http.csrf().disable();
+
+        // 设置验证码过滤器  作用于CustomAuthenticationProvider 保持一致  使用一个即可
+        http.addFilterBefore(new VerifyFilter(), UsernamePasswordAuthenticationFilter.class);
+        http.formLogin()
+                // 设置登陆的URL
+                .loginProcessingUrl("/login")
+                .successHandler(customAuthenticationSuccessHandler)
+                .failureHandler(customAuthenticationFailureHandler)
+                .authenticationDetailsSource(authenticationDetailsSource);
+
+        // 退出操作配置
+        http.logout()
+                // 清除SecurityContextHandler中的授权信息
+                .clearAuthentication(false)
+                // 退出的URL
+                .logoutUrl("/logout")
+                // 清除Cookies
+                .deleteCookies("JSESSIONID")
+                // 退出成功执行的Handler
+                .logoutSuccessHandler(customLogoutSuccessHandler);
+
+        // 配置请求授权
+        http.authorizeRequests()
+                // 过滤URL地址
+                .antMatchers("/getVerifyCode", "/login/invalid")
+                .permitAll()
+                .anyRequest()
+                .authenticated();
+
+        // 配置记住密码
+        http.rememberMe().tokenRepository(persistentTokenRepository()).tokenValiditySeconds(60);
+
+        // 配置Session
+        http.sessionManagement().invalidSessionUrl("/login/invalid").maximumSessions(1).maxSessionsPreventsLogin(false);
+
     }
 
 
+    /**
+     * 过滤静态资源，
+     * 顾名思义，WebSecurity主要是配置跟web资源相关的，比如css、js、images等等，但是这个还不是本质的区别，关键的区别如下：
+     * ingore是完全绕过了spring security的所有filter，相当于不走spring security
+     * permitall没有绕过spring security，其中包含了登录的以及匿名的。
+     */
     @Override
     public void configure(WebSecurity web) throws Exception {
         // 设置拦截忽略文件夹，可以对静态资源放行
