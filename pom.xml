@@ -20,6 +20,7 @@
     </properties>
 
     <modules>
+        <module>spring-boot-config</module>
         <module>spring-boot-starter</module>
         <module>spring-boot-starter-sample</module>
         <module>spring-boot-security</module>
